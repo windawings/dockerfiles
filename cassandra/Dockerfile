@@ -2,11 +2,7 @@ FROM itzg/ubuntu-openjdk-7
 
 MAINTAINER itzg
 
-RUN apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get install -y wget && \
-  apt-get clean
-
-ENV CASSANDRA_VERSION 2.0.15
+ENV CASSANDRA_VERSION 2.0.16
 
 RUN wget -qO /tmp/apache-cassandra.tgz http://mirrors.ibiblio.org/apache/cassandra/$CASSANDRA_VERSION/apache-cassandra-$CASSANDRA_VERSION-bin.tar.gz 
 RUN tar -C /opt -zxvf /tmp/apache-cassandra.tgz && \
