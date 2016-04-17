@@ -12,7 +12,7 @@ if [ -n "$CASS_PORT_9160_TCP_ADDR" ]; then
 
   shortcut=/tmp/titan.properties
   cat >> /tmp/titan.properties <<END
-storage.backend=cassandra
+storage.backend=cassandrathrift
 storage.hostname=$CASS_PORT_9160_TCP_ADDR
 END
 
@@ -20,7 +20,7 @@ elif [ -n "$CASS_ADDR" ]; then
 
   shortcut=/tmp/titan.properties
   cat >> /tmp/titan.properties <<END
-storage.backend=cassandra
+storage.backend=cassandrathrift
 storage.hostname=$CASS_ADDR
 END
 
@@ -48,7 +48,7 @@ END
 index.search.hostname=$esAddr
 END
   fi
-  
+
 fi
 
 if [ -n "$shortcut" ]; then

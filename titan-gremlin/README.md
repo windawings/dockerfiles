@@ -38,8 +38,5 @@ and with that you can follow the
     gremlin> GraphOfTheGodsFactory.load(g)
     gremlin> saturn = g.V.has('name','saturn').next()
     ==>v[256]
-    gremlin> saturn.map()
-    ==>name=saturn
-    ==>age=10000
-    gremlin> saturn.in('father').in('father').name
-    ==>hercules
+    gremlin> g.V(saturn).valueMap()
+    ==>[name:[saturn], age:[10000]]
