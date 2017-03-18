@@ -1,13 +1,13 @@
 #!/bin/sh
 
 set -e
-sed -i "/^minecraft/s/1000/${UID}/g" /etc/passwd
-sed -i "/^minecraft/s/1000/${GID}/g" /etc/group
+usermod --uid $UID minecraft
+groupmod --gid $GID minecraft
 
 if [ "$SKIP_OWNERSHIP_FIX" != "TRUE" ]; then
   fix_ownership() {
     dir=$1
-    if ! su-exec minecraft test -w $dir; then
+    if ! sudo -u minecraft test -w $dir; then
       echo "Correcting writability of $dir ..."
       chown -R minecraft:minecraft $dir
       chmod -R u+w $dir
@@ -19,4 +19,4 @@ if [ "$SKIP_OWNERSHIP_FIX" != "TRUE" ]; then
 fi
 
 echo "Switching to user 'minecraft'"
-su-exec minecraft /start-minecraft $@
+exec sudo -E -u minecraft /start-minecraft "$@"

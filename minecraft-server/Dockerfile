@@ -1,27 +1,25 @@
-FROM alpine
-
+FROM openjdk:8-jre
 
 MAINTAINER itzg
 
-RUN echo "http://dl-3.alpinelinux.org/alpine/v3.5/community/" >> /etc/apk/repositories &&\
-        apk update && \
-        apk add \
-          openjdk8-jre-base \
-          openssl \
+ENV APT_GET_UPDATE 2017-03-17
+RUN apt-get update
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
           imagemagick \
           lsof \
-          su-exec \
-          bash \
-          git \
-          jq &&\
-        rm -rf /var/cache/apk/*
+  nano \
+  sudo \
+  vim \
+  jq \
+  && apt-get clean
 
-RUN addgroup -g 1000 minecraft \
-  && adduser -Ss /bin/false -u 1000 -G minecraft -h /home/minecraft minecraft \
+RUN useradd -s /bin/false --uid 1000 minecraft \
   && mkdir /data \
   && mkdir /config \
   && mkdir /mods \
   && mkdir /plugins \
+  && mkdir /home/minecraft \
   && chown minecraft:minecraft /data /config /mods /plugins /home/minecraft
 
 EXPOSE 25565 25575
