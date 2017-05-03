@@ -1,6 +1,6 @@
 FROM openjdk:8-jre
 
-MAINTAINER itzg
+LABEL maintainer "itzg"
 
 ENV APT_GET_UPDATE 2017-03-17
 RUN apt-get update
