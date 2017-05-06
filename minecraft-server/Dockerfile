@@ -12,6 +12,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
   sudo \
   vim \
   jq \
+  mysql-client \
   && apt-get clean
 
 RUN useradd -s /bin/false --uid 1000 minecraft \
