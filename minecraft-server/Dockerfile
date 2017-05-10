@@ -2,18 +2,17 @@ FROM openjdk:8-jre
 
 LABEL maintainer "itzg"
 
-ENV APT_GET_UPDATE 2017-03-17
-RUN apt-get update
-
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
-          imagemagick \
-          lsof \
-  nano \
-  sudo \
-  vim \
-  jq \
-  mysql-client \
-  && apt-get clean
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      imagemagick \
+      lsof \
+      nano \
+      sudo \
+      vim \
+      jq \
+      mysql-client \
+      python \
+    && apt-get clean
 
 RUN useradd -s /bin/false --uid 1000 minecraft \
   && mkdir /data \
