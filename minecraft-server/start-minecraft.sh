@@ -20,6 +20,9 @@ fi
 
 SERVER_PROPERTIES=/data/server.properties
 FTB_DIR=/data/FeedTheBeast
+BUNGEE_DIR=/data/BungeeCord
+BUNGEE_URL=https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar
+BUNGEE_JAR=BungeeCord.jar
 VERSIONS_JSON=https://launchermeta.mojang.com/mc/game/version_manifest.json
 
 echo "Checking version information."
@@ -262,6 +265,7 @@ function installFTB {
   unzip -o ${srv_modpack} -d ${FTB_DIR}
   cp -f /data/eula.txt ${FTB_DIR}/eula.txt
   FTB_SERVER_START=${FTB_DIR}/ServerStart.sh
+  SERVER_DIR=$FTB_DIR
   chmod a+x ${FTB_SERVER_START}
   sed -i "s/-jar/-Dfml.queryResult=confirm -jar/" ${FTB_SERVER_START}
 }
@@ -275,11 +279,20 @@ function installVanilla {
   fi
 }
 
+function installBungeeCord {
+  mkdir -p $BUNGEE_DIR
+  SERVER_DIR=$BUNGEE_DIR
+  if ! curl -o $BUNGEE_DIR/${BUNGEE_JAR} -fsSL $BUNGEE_URL; then
+    echo "Unable to download BungeeCord from $BUNGEE_URL"
+    exit 2
+  fi
+}
+
 echo "Checking type information."
-case "$TYPE" in
-  *BUKKIT|*bukkit|SPIGOT|spigot)
-    case "$TYPE" in
-      *BUKKIT|*bukkit)
+case "${TYPE^^}" in
+  *BUKKIT|SPIGOT)
+    case "${TYPE^^}" in
+      *BUKKIT)
         SERVER=craftbukkit_server.jar
         ;;
       *)
@@ -298,7 +311,7 @@ case "$TYPE" in
     TYPE=SPIGOT
   ;;
 
-  PAPER|paper)
+  PAPER)
     SERVER=paper_server.jar
     if [ ! -f $SERVER ]; then
       downloadPaper
@@ -307,18 +320,23 @@ case "$TYPE" in
     TYPE=SPIGOT
   ;;
 
-  FORGE|forge)
+  FORGE)
     TYPE=FORGE
     installForge
   ;;
 
-  FTB|ftb)
+  FTB)
     TYPE=FEED-THE-BEAST
     installFTB
   ;;
 
-  VANILLA|vanilla)
+  VANILLA)
     installVanilla
+  ;;
+
+  BUNGEE*)
+    TYPE=BUNGEECORD
+    installBungeeCord
   ;;
 
   *)
@@ -571,18 +589,23 @@ fi
 echo "Setting initial memory to ${INIT_MEMORY:-${MEMORY}} and max to ${MAX_MEMORY:-${MEMORY}}"
 JVM_OPTS="-Xms${INIT_MEMORY:-${MEMORY}} -Xmx${MAX_MEMORY:-${MEMORY}} ${JVM_OPTS}"
 
+if [[ -n $SERVER_DIR ]]; then
+  cp -f $SERVER_PROPERTIES ${SERVER_DIR}/server.properties
+  cp -f /data/{eula,ops,white-list}.txt ${SERVER_DIR}/
+  cd $SERVER_DIR
+fi
+
 if [[ ${TYPE} == "FEED-THE-BEAST" ]]; then
-    cp -f $SERVER_PROPERTIES ${FTB_DIR}/server.properties
-    cp -f /data/{eula,ops,white-list}.txt ${FTB_DIR}/
-    cd ${FTB_DIR}
-    echo "Running FTB server modpack start ..."
-    exec sh ${FTB_SERVER_START}
+  echo "Running FTB server modpack start ..."
+  exec sh ${FTB_SERVER_START}
+elif [[ ${TYPE} == BUNGEECORD ]]; then
+  exec java $JVM_XX_OPTS $JVM_OPTS -jar ${BUNGEE_JAR} "$@" $EXTRA_ARGS
 else
-    # If we have a bootstrap.txt file... feed that in to the server stdin
-    if [ -f /data/bootstrap.txt ];
-    then
-        exec java $JVM_XX_OPTS $JVM_OPTS -jar $SERVER "$@" $EXTRA_ARGS < /data/bootstrap.txt
-    else
-        exec java $JVM_XX_OPTS $JVM_OPTS -jar $SERVER "$@" $EXTRA_ARGS
-    fi
+  # If we have a bootstrap.txt file... feed that in to the server stdin
+  if [ -f /data/bootstrap.txt ];
+  then
+    exec java $JVM_XX_OPTS $JVM_OPTS -jar $SERVER "$@" $EXTRA_ARGS < /data/bootstrap.txt
+  else
+    exec java $JVM_XX_OPTS $JVM_OPTS -jar $SERVER "$@" $EXTRA_ARGS
+  fi
 fi

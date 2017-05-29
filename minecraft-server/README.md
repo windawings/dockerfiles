@@ -289,6 +289,20 @@ This works well if you want to have a common set of plugins in a separate
 location, but still have multiple worlds with different server requirements
 in either persistent volumes or a downloadable archive.
 
+## Running BungeeCord
+
+A [BungeeCord server](https://www.spigotmc.org/wiki/bungeecord/) can be run by
+adding a `-e TYPE=BUNGEECORD` to your command-line.
+
+BungeeCord is run and configured from the directory `/data/BungeeCord`, so you will typically want
+to attach the `/data` volume. Specifically, it loads the configuration file `/data/BungeeCord/config.yml`.
+Additionally, BungeeCord listens on port 25575, so be sure to include a port mapping for that.
+
+    docker run -d -v /path/on/host:/data \
+        -e TYPE=BUNGEECORD \
+        -p 25565:25565 -p 25575:25575 \
+        -e EULA=TRUE itzg/minecraft-server
+
 ## Running a Server with a Feed-The-Beast (FTB) modpack
 
 Enable this server mode by adding a `-e TYPE=FTB` to your command-line,
