@@ -121,46 +121,83 @@ function downloadPaper {
 
 function installForge {
   TYPE=FORGE
-  norm=$VANILLA_VERSION
 
-  echo "Checking Forge version information."
-  case $FORGEVERSION in
-    RECOMMENDED)
-      curl -fsSL -o /tmp/forge.json http://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json
-      FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$norm-recommended\"]")
-      if [ $FORGE_VERSION = null ]; then
-        FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$norm-latest\"]")
+  if [[ -z $FORGE_INSTALLER && -z $FORGE_INSTALLER_URL ]]; then
+    norm=$VANILLA_VERSION
+
+    case $VANILLA_VERSION in
+      *.*.*)
+        norm=$VANILLA_VERSION ;;
+      *.*)
+        norm=${VANILLA_VERSION}.0 ;;
+    esac
+
+    echo "Checking Forge version information."
+    case $FORGEVERSION in
+      RECOMMENDED)
+        curl -fsSL -o /tmp/forge.json http://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json
+        FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$VANILLA_VERSION-recommended\"]")
         if [ $FORGE_VERSION = null ]; then
-          echo "ERROR: Version $FORGE_VERSION is not supported by Forge"
-          echo "       Refer to http://files.minecraftforge.net/ for supported versions"
+          FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$VANILLA_VERSION-latest\"]")
+          if [ $FORGE_VERSION = null ]; then
+            echo "ERROR: Version $VANILLA_VERSION is not supported by Forge"
+            echo "       Refer to http://files.minecraftforge.net/ for supported versions"
+            exit 2
+          fi
+        fi
+        ;;
+
+      *)
+        FORGE_VERSION=$FORGEVERSION
+        ;;
+    esac
+
+    normForgeVersion=$VANILLA_VERSION-$FORGE_VERSION-$norm
+    shortForgeVersion=$VANILLA_VERSION-$FORGE_VERSION
+
+    FORGE_INSTALLER="/tmp/forge-$shortForgeVersion-installer.jar"
+  elif [[ -z $FORGE_INSTALLER ]]; then
+    FORGE_INSTALLER="/tmp/forge-installer.jar"
+  elif [[ ! -e $FORGE_INSTALLER ]]; then
+    echo "ERROR: the given Forge installer doesn't exist : $FORGE_INSTALLER"
+    exit 2
+  fi
+
+  installMarker=".forge-installed-$shortForgeVersion"
+
+  if [ ! -e $installMarker ]; then
+    if [ ! -e $FORGE_INSTALLER ]; then
+
+      if [[ -z $FORGE_INSTALLER_URL ]]; then
+        echo "Downloading $normForgeVersion"
+
+        forgeFileNames="
+        $normForgeVersion/forge-$normForgeVersion-installer.jar
+        $shortForgeVersion/forge-$shortForgeVersion-installer.jar
+        END
+      "
+        for fn in $forgeFileNames; do
+          if [ $fn == END ]; then
+            echo "Unable to compute URL for $normForgeVersion"
+            exit 2
+          fi
+          downloadUrl=http://files.minecraftforge.net/maven/net/minecraftforge/forge/$fn
+          echo "...trying $downloadUrl"
+          if curl -o $FORGE_INSTALLER -fsSL $downloadUrl; then
+            break
+          fi
+        done
+      else
+        echo "Downloading $FORGE_INSTALLER_URL ..."
+        if ! curl -o $FORGE_INSTALLER -fsSL $FORGE_INSTALLER_URL; then
+          echo "Failed to download from given location $FORGE_INSTALLER_URL"
           exit 2
         fi
       fi
-      ;;
+    fi
 
-    *)
-      FORGE_VERSION=$FORGEVERSION
-      ;;
-  esac
-
-  # URL format changed for 1.7.10 from 10.13.2.1300
-  sorted=$( (echo $FORGE_VERSION; echo 10.13.2.1300) | sort | head -1)
-  if [[ $norm == '1.7.10' && $sorted == '10.13.2.1300' ]]; then
-      # if $FORGEVERSION >= 10.13.2.1300
-      normForgeVersion="$norm-$FORGE_VERSION-$norm"
-  else
-      normForgeVersion="$norm-$FORGE_VERSION"
-  fi
-
-  FORGE_INSTALLER="forge-$normForgeVersion-installer.jar"
-  SERVER="forge-$normForgeVersion-universal.jar"
-
-  downloadUrl="http://files.minecraftforge.net/maven/net/minecraftforge/forge/$normForgeVersion/$FORGE_INSTALLER"
-
-  if [ ! -e "$SERVER" ]; then
-    echo "Downloading $FORGE_INSTALLER ..."
-    wget -q $downloadUrl
-    echo "Installing $SERVER"
+    echo "Installing Forge $shortForgeVersion using $FORGE_INSTALLER"
+    mkdir -p mods
     tries=3
     while ((--tries >= 0)); do
       java -jar $FORGE_INSTALLER --installServer
@@ -172,6 +209,30 @@ function installForge {
       echo "Forge failed to install after several tries." >&2
       exit 10
     fi
+
+    # NOTE $shortForgeVersion will be empty if installer location was given to us
+    echo "Finding installed server jar..."
+    for j in *forge*.jar; do
+      echo "...$j"
+      case $j in
+        *installer*)
+          ;;
+        *)
+          SERVER=$j
+          break
+          ;;
+      esac
+    done
+    if [[ -z $SERVER ]]; then
+      echo "Unable to derive server jar for Forge"
+      exit 2
+    fi
+
+    echo "Using server $SERVER"
+    echo $SERVER > $installMarker
+
+  else
+    SERVER=$(cat $installMarker)
   fi
 }
 
@@ -339,8 +400,8 @@ if [[ "$MODPACK" ]]; then
 case "X$MODPACK" in
   X[Hh][Tt][Tt][Pp]*[Zz][iI][pP])
     echo "Downloading mod/plugin pack via HTTP"
-    echo "$MODPACK"
-    wget -q -O /tmp/modpack.zip "$MODPACK"
+    echo "  from $MODPACK ..."
+    curl -sSL -o /tmp/modpack.zip "$MODPACK"
     if [ "$TYPE" = "SPIGOT" ]; then
       mkdir -p /data/plugins
       unzip -o -d /data/plugins /tmp/modpack.zip
@@ -496,19 +557,19 @@ fi
 
 # Make sure files exist to avoid errors
 if [ ! -e banned-players.json ]; then
-	echo '' > banned-players.json
+	echo '[]' > banned-players.json
 fi
 if [ ! -e banned-ips.json ]; then
-	echo '' > banned-ips.json
+	echo '[]' > banned-ips.json
 fi
 
 # If any modules have been provided, copy them over
-[ -d /data/mods ] || mkdir /data/mods
-for m in /mods/*.jar
+mkdir -p /data/mods
+for m in /mods/*.{jar,zip}
 do
-  if [ -f "$m" ]; then
+  if [ -f "$m" -a ! -f "/data/mods/$m" ]; then
     echo Copying mod `basename "$m"`
-    cp -f "$m" /data/mods
+    cp "$m" /data/mods
   fi
 done
 [ -d /data/config ] || mkdir /data/config
@@ -536,13 +597,12 @@ fi
 # Optional disable GUI for headless servers
 if [[ ${GUI} = false || ${GUI} = FALSE ]]; then
   EXTRA_ARGS="${EXTRA_ARGS} nogui"
-fi 
+fi
 
 # put these prior JVM_OPTS at the end to give any memory settings there higher precedence
 echo "Setting initial memory to ${INIT_MEMORY:-${MEMORY}} and max to ${MAX_MEMORY:-${MEMORY}}"
 JVM_OPTS="-Xms${INIT_MEMORY:-${MEMORY}} -Xmx${MAX_MEMORY:-${MEMORY}} ${JVM_OPTS}"
 
-set -x
 if [[ ${TYPE} == "FEED-THE-BEAST" ]]; then
     cp -f $SERVER_PROPERTIES ${FTB_DIR}/server.properties
     cp -f /data/{eula,ops,white-list}.txt ${FTB_DIR}/
