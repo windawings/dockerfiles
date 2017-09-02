@@ -1,5 +1,7 @@
 #!/bin/bash
 
+shopt -s nullglob
+
 #umask 002
 export HOME=/data
 
@@ -7,6 +9,10 @@ if [ ! -e /data/eula.txt ]; then
   if [ "$EULA" != "" ]; then
     echo "# Generated via Docker on $(date)" > eula.txt
     echo "eula=$EULA" >> eula.txt
+    if [ $? != 0 ]; then
+      echo "ERROR: unable to write eula to /data. Please make sure attached directory is writable by uid=${UID}"
+      exit 2
+    fi
   else
     echo ""
     echo "Please accept the Minecraft EULA at"
@@ -16,6 +22,11 @@ if [ ! -e /data/eula.txt ]; then
     echo ""
     exit 1
   fi
+fi
+
+if ! touch /data/.verify_access; then
+  echo "ERROR: /data doesn't seem to be writable. Please make sure attached directory is writable by uid=${UID} "
+  exit 2
 fi
 
 SERVER_PROPERTIES=/data/server.properties
@@ -121,46 +132,83 @@ function downloadPaper {
 
 function installForge {
   TYPE=FORGE
-  norm=$VANILLA_VERSION
 
-  echo "Checking Forge version information."
-  case $FORGEVERSION in
-    RECOMMENDED)
-      curl -fsSL -o /tmp/forge.json http://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json
-      FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$norm-recommended\"]")
-      if [ $FORGE_VERSION = null ]; then
-        FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$norm-latest\"]")
+  if [[ -z $FORGE_INSTALLER && -z $FORGE_INSTALLER_URL ]]; then
+    norm=$VANILLA_VERSION
+
+    case $VANILLA_VERSION in
+      *.*.*)
+        norm=$VANILLA_VERSION ;;
+      *.*)
+        norm=${VANILLA_VERSION}.0 ;;
+    esac
+
+    echo "Checking Forge version information."
+    case $FORGEVERSION in
+      RECOMMENDED)
+        curl -fsSL -o /tmp/forge.json http://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json
+        FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$VANILLA_VERSION-recommended\"]")
         if [ $FORGE_VERSION = null ]; then
-          echo "ERROR: Version $FORGE_VERSION is not supported by Forge"
-          echo "       Refer to http://files.minecraftforge.net/ for supported versions"
+          FORGE_VERSION=$(cat /tmp/forge.json | jq -r ".promos[\"$VANILLA_VERSION-latest\"]")
+          if [ $FORGE_VERSION = null ]; then
+            echo "ERROR: Version $VANILLA_VERSION is not supported by Forge"
+            echo "       Refer to http://files.minecraftforge.net/ for supported versions"
+            exit 2
+          fi
+        fi
+        ;;
+
+      *)
+        FORGE_VERSION=$FORGEVERSION
+        ;;
+    esac
+
+    normForgeVersion=$VANILLA_VERSION-$FORGE_VERSION-$norm
+    shortForgeVersion=$VANILLA_VERSION-$FORGE_VERSION
+
+    FORGE_INSTALLER="/tmp/forge-$shortForgeVersion-installer.jar"
+  elif [[ -z $FORGE_INSTALLER ]]; then
+    FORGE_INSTALLER="/tmp/forge-installer.jar"
+  elif [[ ! -e $FORGE_INSTALLER ]]; then
+    echo "ERROR: the given Forge installer doesn't exist : $FORGE_INSTALLER"
+    exit 2
+  fi
+
+  installMarker=".forge-installed-$shortForgeVersion"
+
+  if [ ! -e $installMarker ]; then
+    if [ ! -e $FORGE_INSTALLER ]; then
+
+      if [[ -z $FORGE_INSTALLER_URL ]]; then
+        echo "Downloading $normForgeVersion"
+
+        forgeFileNames="
+        $normForgeVersion/forge-$normForgeVersion-installer.jar
+        $shortForgeVersion/forge-$shortForgeVersion-installer.jar
+        END
+      "
+        for fn in $forgeFileNames; do
+          if [ $fn == END ]; then
+            echo "Unable to compute URL for $normForgeVersion"
+            exit 2
+          fi
+          downloadUrl=http://files.minecraftforge.net/maven/net/minecraftforge/forge/$fn
+          echo "...trying $downloadUrl"
+          if curl -o $FORGE_INSTALLER -fsSL $downloadUrl; then
+            break
+          fi
+        done
+      else
+        echo "Downloading $FORGE_INSTALLER_URL ..."
+        if ! curl -o $FORGE_INSTALLER -fsSL $FORGE_INSTALLER_URL; then
+          echo "Failed to download from given location $FORGE_INSTALLER_URL"
           exit 2
         fi
       fi
-      ;;
+    fi
 
-    *)
-      FORGE_VERSION=$FORGEVERSION
-      ;;
-  esac
-
-  # URL format changed for 1.7.10 from 10.13.2.1300
-  sorted=$( (echo $FORGE_VERSION; echo 10.13.2.1300) | sort | head -1)
-  if [[ $norm == '1.7.10' && $sorted == '10.13.2.1300' ]]; then
-      # if $FORGEVERSION >= 10.13.2.1300
-      normForgeVersion="$norm-$FORGE_VERSION-$norm"
-  else
-      normForgeVersion="$norm-$FORGE_VERSION"
-  fi
-
-  FORGE_INSTALLER="forge-$normForgeVersion-installer.jar"
-  SERVER="forge-$normForgeVersion-universal.jar"
-
-  downloadUrl="http://files.minecraftforge.net/maven/net/minecraftforge/forge/$normForgeVersion/$FORGE_INSTALLER"
-
-  if [ ! -e "$SERVER" ]; then
-    echo "Downloading $FORGE_INSTALLER ..."
-    wget -q $downloadUrl
-    echo "Installing $SERVER"
+    echo "Installing Forge $shortForgeVersion using $FORGE_INSTALLER"
+    mkdir -p mods
     tries=3
     while ((--tries >= 0)); do
       java -jar $FORGE_INSTALLER --installServer
@@ -172,6 +220,30 @@ function installForge {
       echo "Forge failed to install after several tries." >&2
       exit 10
     fi
+
+    # NOTE $shortForgeVersion will be empty if installer location was given to us
+    echo "Finding installed server jar..."
+    for j in *forge*.jar; do
+      echo "...$j"
+      case $j in
+        *installer*)
+          ;;
+        *)
+          SERVER=$j
+          break
+          ;;
+      esac
+    done
+    if [[ -z $SERVER ]]; then
+      echo "Unable to derive server jar for Forge"
+      exit 2
+    fi
+
+    echo "Using server $SERVER"
+    echo $SERVER > $installMarker
+
+  else
+    SERVER=$(cat $installMarker)
   fi
 }
 
@@ -339,12 +411,18 @@ if [[ "$MODPACK" ]]; then
 case "X$MODPACK" in
   X[Hh][Tt][Tt][Pp]*[Zz][iI][pP])
     echo "Downloading mod/plugin pack via HTTP"
-    echo "$MODPACK"
-    wget -q -O /tmp/modpack.zip "$MODPACK"
+    echo "  from $MODPACK ..."
+    curl -sSL -o /tmp/modpack.zip "$MODPACK"
     if [ "$TYPE" = "SPIGOT" ]; then
+      if [ "$REMOVE_OLD_MODS" = "TRUE" ]; then
+        rm -rf /data/plugins/*
+      fi
       mkdir -p /data/plugins
       unzip -o -d /data/plugins /tmp/modpack.zip
     else
+      if [ "$REMOVE_OLD_MODS" = "TRUE" ]; then
+        rm -rf /data/mods/*
+      fi
       mkdir -p /data/mods
       unzip -o -d /data/mods /tmp/modpack.zip
     fi
@@ -352,6 +430,28 @@ case "X$MODPACK" in
     ;;
   *)
     echo "Invalid URL given for modpack: Must be HTTP or HTTPS and a ZIP file"
+    ;;
+esac
+fi
+
+# If supplied with a URL for a config (simple zip of configurations), download it and unpack
+if [[ "$MODCONFIG" ]]; then
+case "X$MODCONFIG" in
+  X[Hh][Tt][Tt][Pp]*[Zz][iI][pP])
+    echo "Downloading mod/plugin configs via HTTP"
+    echo "  from $MODCONFIG ..."
+    curl -sSL -o /tmp/modconfig.zip "$MODCONFIG"
+    if [ "$TYPE" = "SPIGOT" ]; then
+      mkdir -p /data/plugins
+      unzip -o -d /data/plugins /tmp/modconfig.zip
+    else
+      mkdir -p /data/config
+      unzip -o -d /data/config /tmp/modconfig.zip
+    fi
+    rm -f /tmp/modconfig.zip
+    ;;
+  *)
+    echo "Invalid URL given for modconfig: Must be HTTP or HTTPS and a ZIP file"
     ;;
 esac
 fi
@@ -380,11 +480,10 @@ if [ ! -e server.properties ]; then
   setServerProp "allow-nether" "$ALLOW_NETHER"
   setServerProp "announce-player-achievements" "$ANNOUNCE_PLAYER_ACHIEVEMENTS"
   setServerProp "enable-command-block" "$ENABLE_COMMAND_BLOCK"
-  setServerProp "spawn-animals" "$SPAWN_ANIMAILS"
+  setServerProp "spawn-animals" "$SPAWN_ANIMALS"
   setServerProp "spawn-monsters" "$SPAWN_MONSTERS"
   setServerProp "spawn-npcs" "$SPAWN_NPCS"
   setServerProp "generate-structures" "$GENERATE_STRUCTURES"
-  setServerProp "spawn-npcs" "$SPAWN_NPCS"
   setServerProp "view-distance" "$VIEW_DISTANCE"
   setServerProp "hardcore" "$HARDCORE"
   setServerProp "max-build-height" "$MAX_BUILD_HEIGHT"
@@ -409,7 +508,7 @@ if [ ! -e server.properties ]; then
     echo "Setting level type to $LEVEL_TYPE"
     # check for valid values and only then set
     case $LEVEL_TYPE in
-      DEFAULT|FLAT|LARGEBIOMES|AMPLIFIED|CUSTOMIZED)
+      DEFAULT|FLAT|LARGEBIOMES|AMPLIFIED|CUSTOMIZED|BIOMESOP)
         sed -i "/level-type\s*=/ c level-type=$LEVEL_TYPE" /data/server.properties
         ;;
       *)
@@ -466,7 +565,7 @@ if [ ! -e server.properties ]; then
         ;;
     esac
 
-    sed -i "/gamemode\s*=/ c gamemode=$MODE" $SERVER_PROPERTIES
+    sed -i "/^gamemode\s*=/ c gamemode=$MODE" $SERVER_PROPERTIES
   fi
 fi
 
@@ -494,21 +593,21 @@ if [ -n "$ICON" -a ! -e server-icon.png ]; then
   fi
 fi
 
-# Make sure files exist to avoid errors
-if [ ! -e banned-players.json ]; then
-	echo '' > banned-players.json
-fi
-if [ ! -e banned-ips.json ]; then
-	echo '' > banned-ips.json
-fi
+# Make sure files exist and are valid JSON (for pre-1.12 to 1.12 upgrades)
+for j in *.json; do
+  if [[ $(python -c "print open('$j').read().strip()==''") = True ]]; then
+    echo "Fixing JSON $j"
+    echo '[]' > $j
+  fi
+done
 
 # If any modules have been provided, copy them over
-[ -d /data/mods ] || mkdir /data/mods
-for m in /mods/*.jar
+mkdir -p /data/mods
+for m in /mods/*.{jar,zip}
 do
-  if [ -f "$m" ]; then
+  if [ -f "$m" -a ! -f "/data/mods/$m" ]; then
     echo Copying mod `basename "$m"`
-    cp -f "$m" /data/mods
+    cp "$m" /data/mods
   fi
 done
 [ -d /data/config ] || mkdir /data/config
@@ -536,13 +635,12 @@ fi
 # Optional disable GUI for headless servers
 if [[ ${GUI} = false || ${GUI} = FALSE ]]; then
   EXTRA_ARGS="${EXTRA_ARGS} nogui"
-fi 
+fi
 
 # put these prior JVM_OPTS at the end to give any memory settings there higher precedence
 echo "Setting initial memory to ${INIT_MEMORY:-${MEMORY}} and max to ${MAX_MEMORY:-${MEMORY}}"
 JVM_OPTS="-Xms${INIT_MEMORY:-${MEMORY}} -Xmx${MAX_MEMORY:-${MEMORY}} ${JVM_OPTS}"
 
-set -x
 if [[ ${TYPE} == "FEED-THE-BEAST" ]]; then
     cp -f $SERVER_PROPERTIES ${FTB_DIR}/server.properties
     cp -f /data/{eula,ops,white-list}.txt ${FTB_DIR}/

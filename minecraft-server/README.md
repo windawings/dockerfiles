@@ -1,6 +1,7 @@
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/itzg/minecraft-server.svg)](https://hub.docker.com/r/itzg/minecraft-server/)
 [![Docker Stars](https://img.shields.io/docker/stars/itzg/minecraft-server.svg?maxAge=2592000)](https://hub.docker.com/r/itzg/minecraft-server/)
+[![GitHub Issues](https://img.shields.io/github/issues-raw/itzg/dockerfiles.svg)](https://github.com/itzg/dockerfiles/issues)
 
 This docker image provides a Minecraft Server that will automatically download the latest stable
 version at startup. You can also run/upgrade to any specific version or the
@@ -117,6 +118,34 @@ or a specific version:
 
     docker run -d -e VERSION=1.7.9 ...
 
+## Healthcheck
+
+This image contains [Dinnerbone's mcstatus](https://github.com/Dinnerbone/mcstatus) and uses
+its `ping` command to continually check on the container's. That can be observed
+from the `STATUS` column of `docker ps`
+
+```
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                    PORTS                                 NAMES
+b418af073764        mc                  "/start"            43 seconds ago      Up 41 seconds (healthy)   0.0.0.0:25565->25565/tcp, 25575/tcp   mc
+```
+
+You can also query the container's health in a script friendly way:
+
+```
+> docker container inspect -f "{{.State.Health.Status}}" mc
+healthy
+```
+
+Finally, since `mcstatus` is on the `PATH` you can exec into the container
+and use mcstatus directly and invoke any of its other commands:
+
+```
+> docker exec mc mcstatus localhost status
+version: v1.12 (protocol 335)
+description: "{u'text': u'A Minecraft Server Powered by Docker'}"
+players: 0/20 No players online
+```
+
 ## Running a Forge Server
 
 Enable Forge server mode by adding a `-e TYPE=FORGE` to your command-line.
@@ -126,6 +155,20 @@ but you can also choose to run a specific version with `-e FORGEVERSION=10.13.4.
     $ docker run -d -v /path/on/host:/data -e VERSION=1.7.10 \
         -e TYPE=FORGE -e FORGEVERSION=10.13.4.1448 \
         -p 25565:25565 -e EULA=TRUE --name mc itzg/minecraft-server
+
+To use a pre-downloaded Forge installer, place it in the attached `/data` directory and
+specify the name of the installer file with `FORGE_INSTALLER`, such as:
+
+    $ docker run -d -v /path/on/host:/data ... \
+        -e FORGE_INSTALLER=forge-1.11.2-13.20.0.2228-installer.jar ...
+
+To download a Forge installer from a custom location, such as your own file repository, specify
+the URL with `FORGE_INSTALLER_URL`, such as:
+
+    $ docker run -d -v /path/on/host:/data ... \
+        -e FORGE_INSTALLER_URL=http://HOST/forge-1.11.2-13.20.0.2228-installer.jar ...
+
+In both of the cases above, there is no need for the `VERSION` or `FORGEVERSION` variables.
 
 In order to add mods, you have two options.
 
@@ -630,6 +673,20 @@ To use this option pass the environment variable `MODPACK`, such as
 top level of the zip archive. Make sure the jars are compatible with the
 particular `TYPE` of server you are running.
 
+### Remove old mods/plugins
+
+When the option above is specified (`MODPACK`) you can also instruct script to
+delete old mods/plugins prior to installing new ones. This behaviour is desirable
+in case you want to upgrade mods/plugins from downloaded zip file.
+To use this option pass the environment variable `REMOVE_OLD_MODS="TRUE"`, such as
+
+    docker run -d -e REMOVE_OLD_MODS="TRUE" -e MODPACK=http://www.example.com/mods/modpack.zip ...
+
+**NOTE:** This option will be taken into account only when option `MODPACK` is also used.
+
+**WARNING:** All content of the `mods` or `plugins` directory will be deleted
+before unpacking new content from the zip file.
+
 ### Online mode
 
 By default, server checks connecting players against Minecraft's account database. If you want to create an offline server or your server is not connected to the internet, you can disable the server to try connecting to minecraft.net to authenticate players with environment variable `ONLINE_MODE`, like this
@@ -654,3 +711,9 @@ The values of all three are passed directly to the JVM and support format/units 
 ### /data ownership
 
 In order to adapt to differences in `UID` and `GID` settings the entry script will attempt to correct ownership and writability of the `/data` directory. This logic can be disabled by setting `-e SKIP_OWNERSHIP_FIX=TRUE`.
+
+### JVM Options
+
+General JVM options can be passed to the Minecraft Server invocation by passing a `JVM_OPTS`
+environment variable. Options like `-X` that need to proceed general JVM options can be passed
+via a `JVM_XX_OPTS` environment variable.
