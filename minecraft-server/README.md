@@ -398,6 +398,21 @@ example:
 Note: The FTB server start script will also override other options,
 like `MOTD`.
 
+## Running a SpongeVanilla server
+
+Enable SpongeVanilla server mode by adding a `-e TYPE=SPONGEVANILLA` to your command-line.
+By default the container will run the latest `STABLE` version.
+If you want to run a specific version, you can add `-e SPONGEVERSION=1.11.2-6.1.0-BETA-19` to your command-line.
+
+    docker run -d -v /path/on/host:/data -e TYPE=SPONGEVANILLA \
+        -p 25565:25565 -e EULA=TRUE --name mc itzg/minecraft-server
+	
+You can also choose to use the `EXPERIMENTAL` branch. 
+Just change it with `SPONGEBRANCH`, such as:
+
+    $ docker run -d -v /path/on/host:/data ... \
+        -e TYPE=SPONGEVANILLA -e SPONGEBRANCH=EXPERIMENTAL ...
+
 ## Using Docker Compose
 
 Rather than type the server options below, the port mappings above, etc
@@ -717,3 +732,11 @@ In order to adapt to differences in `UID` and `GID` settings the entry script wi
 General JVM options can be passed to the Minecraft Server invocation by passing a `JVM_OPTS`
 environment variable. Options like `-X` that need to proceed general JVM options can be passed
 via a `JVM_XX_OPTS` environment variable.
+
+### HTTP Proxy
+
+You may configure the use of an HTTP/HTTPS proxy by passing the proxy's URL via the `PROXY`
+environment variable. In [the example compose file](docker-compose-proxied.yml) it references 
+a companion squid proxy by setting the equivalent of
+
+    -e PROXY=proxy:3128
