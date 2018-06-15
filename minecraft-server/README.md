@@ -91,17 +91,6 @@ to map a directory on your host machine to the container's `/data` directory, su
 When attached in this way you can stop the server, edit the configuration under your attached `/path/on/host`
 and start the server again with `docker start CONTAINERID` to pick up the new configuration.
 
-**NOTE**: By default, the files in the attached directory will be owned by the host user with UID of 1000 and host group with GID of 1000.
-You can use an different UID and GID by passing the options:
-
-    -e UID=1000 -e GID=1000
-
-replacing 1000 with a UID and GID that is present on the host.
-Here is one way to find the UID and GID:
-
-    id some_host_user
-    getent group some_host_group
-
 ## Versions
 
 To use a different Minecraft version, pass the `VERSION` environment variable, which can have the value
@@ -398,6 +387,16 @@ example:
 Note: The FTB server start script will also override other options,
 like `MOTD`.
 
+### Fixing "unable to launch forgemodloader"
+
+If your server's modpack fails to load with an error [like this](https://support.feed-the-beast.com/t/cant-start-crashlanding-server-unable-to-launch-forgemodloader/6028/2):
+
+    unable to launch forgemodloader
+     
+then you apply a workaround by adding this to the run invocation:
+
+    -e FTB_LEGACYJAVAFIXER=true
+
 ## Running a SpongeVanilla server
 
 Enable SpongeVanilla server mode by adding a `-e TYPE=SPONGEVANILLA` to your command-line.
@@ -445,6 +444,11 @@ Now, go play...or adjust the  `environment` section to configure
 this server instance.    
 
 ## Server configuration
+
+### Server port
+
+The server port can be set like:
+    docker run -d -e SERVER_PORT=25565 ...
 
 ### Difficulty
 
@@ -547,6 +551,12 @@ If set to true, players will be set to spectator mode if they die.
 
     docker run -d -e HARDCORE=false
 
+### Snooper
+
+If set to false, the server will not send data to snoop.minecraft.net server.
+
+    docker run -d -e SNOOPER_ENABLED=false
+
 ### Max Build Height
 
 The maximum height in which building is allowed.
@@ -613,8 +623,14 @@ The message of the day, shown below each server entry in the UI, can be changed 
 
     docker run -d -e 'MOTD=My Server' ...
 
-If you leave it off, the last used or default message will be used. _The example shows how to specify a server
-message of the day that contains spaces by putting quotes around the whole thing._
+If you leave it off, a default is computed from the server type and version, such as
+
+    A Paper Minecraft Server powered by Docker
+    
+when `TYPE` is `PAPER`. That way you can easily differentiate between several servers you may have started.
+
+_The example shows how to specify a server message of the day that contains spaces by putting quotes 
+around the whole thing._
 
 ### PVP Mode
 
@@ -708,6 +724,12 @@ By default, server checks connecting players against Minecraft's account databas
 
     docker run -d -e ONLINE_MODE=FALSE ...
 
+### Allow flight
+
+Allows users to use flight on your server while in Survival mode, if they have a mod that provides flight installed.
+
+    -e ALLOW_FLIGHT=TRUE|FALSE
+
 ## Miscellaneous Options
 
 ### Memory Limit
@@ -722,10 +744,6 @@ ways to adjust the memory settings:
 
 The values of all three are passed directly to the JVM and support format/units as
 `<size>[g|G|m|M|k|K]`.
-
-### /data ownership
-
-In order to adapt to differences in `UID` and `GID` settings the entry script will attempt to correct ownership and writability of the `/data` directory. This logic can be disabled by setting `-e SKIP_OWNERSHIP_FIX=TRUE`.
 
 ### JVM Options
 

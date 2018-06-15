@@ -1,20 +1,26 @@
-FROM openjdk:8-jre
+FROM arm32v6/openjdk:8u151-jre-alpine
 
 LABEL maintainer "itzg"
 
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-      imagemagick \
-      lsof \
-      nano \
-      sudo \
-      vim \
-      jq \
-      mysql-client \
-      python \
-    && apt-get clean
+RUN apk add -U \
+          openssl \
+          imagemagick \
+          lsof \
+          su-exec \
+          bash \
+          curl iputils wget \
+          git \
+          jq \
+          mysql-client \
+          python python-dev py2-pip && \
+        rm -rf /var/cache/apk/*
 
-RUN useradd -s /bin/false --uid 1000 minecraft \
+RUN pip install mcstatus
+
+HEALTHCHECK CMD mcstatus localhost ping
+
+RUN addgroup -g 1000 minecraft \
+  && adduser -Ss /bin/false -u 1000 -G minecraft -h /home/minecraft minecraft \
   && mkdir -m 777 /data /mods /config /plugins \
   && chown minecraft:minecraft /data /config /mods /plugins /home/minecraft
 
@@ -23,7 +29,7 @@ EXPOSE 25565 25575
 ARG RESTIFY_VER=1.1.4
 ARG RCON_CLI_VER=1.4.0
 ARG MC_SERVER_RUNNER_VER=1.1.2
-ARG ARCH=amd64
+ARG ARCH=armv6
 
 ADD https://github.com/itzg/restify/releases/download/${RESTIFY_VER}/restify_${RESTIFY_VER}_linux_${ARCH}.tar.gz /tmp/restify.tgz
 RUN tar -x -C /usr/local/bin -f /tmp/restify.tgz restify && \
