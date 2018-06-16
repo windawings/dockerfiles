@@ -1,9 +1,10 @@
-FROM openjdk:8-jre
+FROM resin/rpi-raspbian:stretch-20180613
 
 LABEL maintainer "itzg"
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      oracle-java8-jdk \
       imagemagick \
       lsof \
       nano \
@@ -15,7 +16,7 @@ RUN apt-get update && \
     && apt-get clean
 
 RUN useradd -s /bin/false --uid 1000 minecraft \
-  && mkdir -m 777 /data /mods /config /plugins \
+  && mkdir -m 777 /data /mods /config /plugins /home/minecraft \
   && chown minecraft:minecraft /data /config /mods /plugins /home/minecraft
 
 EXPOSE 25565 25575
@@ -23,7 +24,7 @@ EXPOSE 25565 25575
 ARG RESTIFY_VER=1.1.4
 ARG RCON_CLI_VER=1.4.0
 ARG MC_SERVER_RUNNER_VER=1.1.2
-ARG ARCH=amd64
+ARG ARCH=armv6
 
 ADD https://github.com/itzg/restify/releases/download/${RESTIFY_VER}/restify_${RESTIFY_VER}_linux_${ARCH}.tar.gz /tmp/restify.tgz
 RUN tar -x -C /usr/local/bin -f /tmp/restify.tgz restify && \
@@ -46,7 +47,7 @@ WORKDIR /data
 
 ENTRYPOINT [ "/start" ]
 
-ENV JVM_XX_OPTS="-XX:+UseG1GC" MEMORY="1G" \
+ENV JVM_XX_OPTS="-XX:+UseG1GC" MEMORY="50M" \
     TYPE=VANILLA VERSION=LATEST FORGEVERSION=RECOMMENDED SPONGEBRANCH=STABLE SPONGEVERSION= LEVEL=world \
     PVP=true DIFFICULTY=easy ENABLE_RCON=true RCON_PORT=25575 RCON_PASSWORD=minecraft \
     LEVEL_TYPE=DEFAULT GENERATOR_SETTINGS= WORLD= MODPACK= SERVER_PORT=25565 ONLINE_MODE=TRUE CONSOLE=true
