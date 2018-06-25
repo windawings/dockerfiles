@@ -1,5 +1,7 @@
 FROM resin/rpi-raspbian:stretch-20180613
 
+RUN [ "cross-build-start" ]
+
 LABEL maintainer "itzg"
 
 RUN apt-get update && \
@@ -40,6 +42,8 @@ RUN tar -x -C /usr/local/bin -f /tmp/mc-server-runner.tgz mc-server-runner && \
 
 COPY mcadmin.jq /usr/share
 RUN chmod +x /usr/local/bin/*
+
+RUN [ "cross-build-end" ]
 
 VOLUME ["/data","/mods","/config","/plugins"]
 COPY server.properties /tmp/server.properties
