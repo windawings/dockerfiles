@@ -1,4 +1,4 @@
-FROM openjdk:8u191-jdk-alpine3.9
+FROM jeanblanchard/java:8
 
 LABEL maintainer "itzg"
 
