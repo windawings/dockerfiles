@@ -1,4 +1,4 @@
-FROM jeanblanchard/java:8
+FROM jeanblanchard/java:jdk-8u131
 
 RUN apk add --no-cache -U \
           openssl \
